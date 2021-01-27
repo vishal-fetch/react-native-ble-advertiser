@@ -1,3 +1,6 @@
+export type FullUUID = (uuid: string) => string;
+
+export const fullUUID: FullUUID;
 export as namespace BLEAdvertiser;
 
 export interface ScanOptions {

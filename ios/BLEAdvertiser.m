@@ -16,10 +16,36 @@ RCT_EXPORT_MODULE(BLEAdvertiser)
     return @[@"onDeviceFound", @"onBTStatusChange"];
 }
 
+NSString *serviceID = @"";
+NSString *characteristicID = @"";
+CBMutableCharacteristic *characteristic;
+
 RCT_EXPORT_METHOD(setCompanyId: (nonnull NSNumber *)companyId){
     RCTLogInfo(@"setCompanyId function called %@", companyId);
     self->centralManager = [[CBCentralManager alloc] initWithDelegate:self queue: nil options:@{CBCentralManagerOptionShowPowerAlertKey: @(YES)}];
     self->peripheralManager = [[CBPeripheralManager alloc] initWithDelegate:self queue:nil options:nil];
+}
+
+RCT_EXPORT_METHOD(createService:(NSString *)uuid withCharacteristic:(NSString *)cuuid resolve: (RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject){
+    serviceID = [uuid uppercaseString];
+    characteristicID = [cuuid uppercaseString];
+    CBMutableService *service = [[CBMutableService alloc] initWithType:[CBUUID UUIDWithString:serviceID] primary:YES];
+    CBCharacteristicProperties properties = CBCharacteristicPropertyNotify|CBCharacteristicPropertyRead;
+    CBAttributePermissions permissions = CBAttributePermissionsReadable;
+    
+    characteristic = [[CBMutableCharacteristic alloc] initWithType:[CBUUID UUIDWithString:characteristicID] properties:properties value:nil permissions:permissions];
+    
+    CBMutableDescriptor *descriptor = [[CBMutableDescriptor alloc] initWithType:[CBUUID UUIDWithString:CBUUIDCharacteristicUserDescriptionString] value:@"isPickUpDone"];
+    characteristic.descriptors = @[descriptor];
+    
+    service.characteristics = @[characteristic];
+    [peripheralManager addService:service];
+    resolve(service);
+}
+
+RCT_EXPORT_METHOD(updateCharacteristic:(NSString *)uuid withValue:(NSDictionary *)payload) {
+    [peripheralManager updateValue:[NSKeyedArchiver archivedDataWithRootObject:payload] forCharacteristic:characteristic onSubscribedCentrals:nil];
 }
 
 RCT_EXPORT_METHOD(broadcast: (NSString *)uid payload:(NSArray *)payload options:(NSDictionary *)options
@@ -231,6 +257,41 @@ RCT_EXPORT_METHOD(isActive:
             break;
         default:
             break;
+    }
+}
+
+- (void)peripheralManager:(CBPeripheralManager *)peripheral didAddService:(CBService *)service error:(NSError *)error {
+    RCTLog(@"Did add service: ");
+    RCTLog(@"%@",error.localizedDescription);
+    
+    if (error == nil) {
+        NSDictionary *advertisingData = @{
+            CBAdvertisementDataServiceUUIDsKey : @[[CBUUID UUIDWithString:serviceID]],
+            CBAdvertisementDataLocalNameKey: @"Taxi Service"
+        };
+
+        [peripheralManager startAdvertising:advertisingData];
+    }
+    
+}
+
+- (void)peripheralManagerDidStartAdvertising:(CBPeripheralManager *)peripheral error:(NSError *)error {
+    RCTLog(@"Did add service: ");
+    RCTLog(@"%@",error.localizedDescription);
+    
+    if (error == nil) {
+        NSLog(@"Peripheral started advertisiing.");
+    }
+}
+
+- (void)peripheralManager:(CBPeripheralManager *)peripheral didReceiveReadRequest:(CBATTRequest *)request {
+    RCTLog(@"Peripheral device wants to read the data.");
+    if (![request.characteristic.UUID isEqual:characteristic.UUID]) {
+        return;
+    } else {
+        
+        request.value = [[NSString.alloc initWithString:@"hello"] dataUsingEncoding:NSUTF8StringEncoding];
+        [peripheral respondToRequest:request withResult:CBATTErrorSuccess];
     }
 }
 
